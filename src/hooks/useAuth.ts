@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
+
+// Local types (replaces @supabase/supabase-js User & Session)
+interface User {
+  id: string;
+  email: string;
+  aud: string;
+  created_at: string;
+}
+interface Session {
+  user: User;
+}
 
 export type AppRole = "super_admin" | "zone_admin";
 

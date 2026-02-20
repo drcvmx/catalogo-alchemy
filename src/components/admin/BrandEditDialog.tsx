@@ -10,8 +10,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Settings, Upload, Loader2, Trash2, ImageIcon, CheckCircle2, Globe, MapPin } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { getBrands, saveBrands } from "@/services/adminStore";
 
 interface BrandData {
   id: string;
@@ -57,21 +57,14 @@ const ImageField = ({
 
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const slug = brandName.toLowerCase().replace(/\s+/g, "-");
-      const path = `${fieldKey}/${slug}.${ext}`;
+      // Convert file to base64 data URL for local demo
+      const reader = new FileReader();
+      const url = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from("brand-assets")
-        .upload(path, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from("brand-assets")
-        .getPublicUrl(path);
-
-      const url = `${data.publicUrl}?t=${Date.now()}`;
       onUploaded(url);
       toast({ title: "Imagen subida", description: label });
     } catch (err: any) {
@@ -154,7 +147,6 @@ export const BrandEditDialog = ({ brand, isSuperAdmin, onSave }: BrandEditDialog
   const [logoUrl, setLogoUrl] = useState(brand.logo_url || "");
   const [heroBannerUrl, setHeroBannerUrl] = useState(brand.hero_banner_url || "");
   const [saving, setSaving] = useState(false);
-  // Super admin scope: "global" updates all zones, "local" updates only this zone
   const [scope, setScope] = useState<"global" | "local">("global");
 
   const handleOpen = (isOpen: boolean) => {
@@ -178,17 +170,21 @@ export const BrandEditDialog = ({ brand, isSuperAdmin, onSave }: BrandEditDialog
         hero_banner_url: heroBannerUrl || null,
       };
 
-      let query;
+      // Update in localStorage via adminStore
+      const brands = getBrands();
+      let updated;
       if (isSuperAdmin && scope === "global") {
-        // Update all brands with this name across all zones
-        query = supabase.from("brands").update(updateData).eq("name", brand.name);
+        // Update all brands with this name
+        updated = brands.map(b =>
+          b.name === brand.name ? { ...b, ...updateData } : b
+        );
       } else {
-        // Update only this specific brand (this zone)
-        query = supabase.from("brands").update(updateData).eq("id", brand.id);
+        // Update only this specific brand
+        updated = brands.map(b =>
+          b.id === brand.id ? { ...b, ...updateData } : b
+        );
       }
-
-      const { error } = await query;
-      if (error) throw error;
+      saveBrands(updated);
 
       const scopeMsg = isSuperAdmin && scope === "global"
         ? `${brand.name} actualizada en todas las zonas`

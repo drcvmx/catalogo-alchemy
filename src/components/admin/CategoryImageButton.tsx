@@ -8,8 +8,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { ImageIcon, Upload, Loader2, Trash2, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { saveCategories, getCategories } from "@/services/adminStore";
 
 interface CategoryImageButtonProps {
   categoryId: string;
@@ -37,29 +37,20 @@ export const CategoryImageButton = ({
 
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const brandSlug = brandName.toLowerCase().replace(/\s+/g, "-");
-      const catSlug = categoryName.toLowerCase().replace(/\s+/g, "-");
-      const path = `categories/${brandSlug}/${catSlug}.${ext}`;
+      // Convert file to base64 data URL for local storage
+      const reader = new FileReader();
+      const url = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from("brand-assets")
-        .upload(path, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from("brand-assets")
-        .getPublicUrl(path);
-
-      const url = `${data.publicUrl}?t=${Date.now()}`;
-
-      const { error: updateError } = await supabase
-        .from("categories")
-        .update({ image_url: url })
-        .eq("id", categoryId);
-
-      if (updateError) throw updateError;
+      // Update category image in localStorage
+      const categories = getCategories();
+      const updated = categories.map(c =>
+        c.id === categoryId ? { ...c, image_url: url } : c
+      );
+      saveCategories(updated);
 
       toast({ title: "Imagen actualizada", description: categoryName });
       onUpdated();
@@ -75,12 +66,11 @@ export const CategoryImageButton = ({
   const handleRemove = async () => {
     setRemoving(true);
     try {
-      const { error } = await supabase
-        .from("categories")
-        .update({ image_url: null })
-        .eq("id", categoryId);
-
-      if (error) throw error;
+      const categories = getCategories();
+      const updated = categories.map(c =>
+        c.id === categoryId ? { ...c, image_url: null } : c
+      );
+      saveCategories(updated);
 
       toast({ title: "Imagen eliminada", description: categoryName });
       onUpdated();
@@ -98,11 +88,10 @@ export const CategoryImageButton = ({
         <Button
           variant="ghost"
           size="sm"
-          className={`h-5 w-5 sm:h-6 sm:w-6 p-0 ${
-            imageUrl
+          className={`h-5 w-5 sm:h-6 sm:w-6 p-0 ${imageUrl
               ? "text-primary opacity-80 hover:opacity-100"
               : "opacity-0 group-hover:opacity-60 hover:!opacity-100 text-muted-foreground"
-          }`}
+            }`}
           onClick={(e) => e.stopPropagation()}
         >
           <ImageIcon className="h-3 w-3" />
